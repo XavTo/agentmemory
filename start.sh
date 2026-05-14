@@ -67,6 +67,14 @@ echo "[railway] Viewer should use Agentmemory defaults"
 
 echo "[railway] Launching agentmemory..."
 
+export VIEWER_PUBLIC_PORT="${VIEWER_PUBLIC_PORT:-8083}"
+export VIEWER_INTERNAL_PORT="${VIEWER_INTERNAL_PORT:-8082}"
+
+echo "[railway] Starting viewer proxy:"
+echo "[railway] 0.0.0.0:${VIEWER_PUBLIC_PORT} -> 127.0.0.1:${VIEWER_INTERNAL_PORT}"
+
+socat TCP-LISTEN:${VIEWER_PUBLIC_PORT},bind=0.0.0.0,fork,reuseaddr TCP:127.0.0.1:${VIEWER_INTERNAL_PORT} &
+
 exec agentmemory \
   --port "${PORT}" \
   --verbose

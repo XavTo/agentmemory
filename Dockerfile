@@ -14,6 +14,7 @@ RUN apt-get update \
     bash \
     sed \
     grep \
+    socat \
   && rm -rf /var/lib/apt/lists/*
 
 # Pin Agentmemory for reproducible Railway builds.
@@ -33,7 +34,7 @@ RUN chmod +x /app/start.sh
 
 EXPOSE 8080
 EXPOSE 3112
-EXPOSE 8082
+EXPOSE 8083
 EXPOSE 49134
 
 CMD ["/app/start.sh"]
