@@ -4,7 +4,6 @@ set -euo pipefail
 export HOME=/app
 export PATH="/app/.local/bin:${PATH}"
 
-# Railway public API port.
 # Your Railway service currently uses PORT=8080.
 export PORT="${PORT:-8080}"
 
