@@ -17,6 +17,7 @@ mkdir -p /app/.agentmemory
 
 echo "[railway] Starting agentmemory"
 echo "[railway] PORT=${PORT}"
+echo "[railway] HOME=${HOME}"
 echo "[railway] III_DATA_DIR=${III_DATA_DIR}"
 echo "[railway] AGENTMEMORY_DATA_DIR=${AGENTMEMORY_DATA_DIR}"
 
@@ -66,9 +67,6 @@ echo "[railway] API listener should be 0.0.0.0:${PORT}"
 echo "[railway] Stream listener should be whatever Agentmemory config defines"
 echo "[railway] Viewer should use Agentmemory defaults"
 
-# Minimal first-run config for Agentmemory 0.9.15/0.9.16.
-# Important: since 0.9.15, first-run is controlled by preferences.json,
-# not only by ~/.agentmemory/.env.
 echo "[railway] Writing /app/.agentmemory/.env from Railway variables..."
 
 cat > /app/.agentmemory/.env <<EOF
@@ -105,6 +103,9 @@ grep -v "SECRET" /app/.agentmemory/.env || true
 
 echo "[railway] Agentmemory preferences preview:"
 cat /app/.agentmemory/preferences.json || true
+
+echo "[railway] Node homedir check:"
+node -e 'const os=require("os"); console.log(os.homedir())'
 
 echo "[railway] Launching agentmemory..."
 
