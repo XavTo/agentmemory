@@ -18,10 +18,10 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 # Pin Agentmemory for reproducible Railway builds.
-RUN npm install -g @agentmemory/agentmemory@0.9.12
+RUN npm install -g @agentmemory/agentmemory@0.9.16
 
 # Pin iii-engine to v0.11.2.
-# Agentmemory currently expects this engine generation.
+# Agentmemory 0.9.x currently expects this engine generation.
 RUN mkdir -p /app/.local/bin \
   && curl -fsSL "https://github.com/iii-hq/iii/releases/download/iii/v0.11.2/iii-x86_64-unknown-linux-gnu.tar.gz" \
   | tar -xz -C /app/.local/bin \

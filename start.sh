@@ -13,6 +13,7 @@ export AGENTMEMORY_DATA_DIR="${AGENTMEMORY_DATA_DIR:-/data}"
 
 mkdir -p /data
 mkdir -p /app
+mkdir -p /app/.agentmemory
 
 echo "[railway] Starting agentmemory"
 echo "[railway] PORT=${PORT}"
@@ -64,6 +65,24 @@ echo "[railway] Expected:"
 echo "[railway] API listener should be 0.0.0.0:${PORT}"
 echo "[railway] Stream listener should be whatever Agentmemory config defines"
 echo "[railway] Viewer should use Agentmemory defaults"
+
+# Minimal first-run config for Agentmemory 0.9.15/0.9.16.
+# Values are taken from Railway environment variables at runtime.
+# This avoids the interactive onboarding prompt in Railway.
+echo "[railway] Writing /app/.agentmemory/.env from Railway variables..."
+
+cat > /app/.agentmemory/.env <<EOF
+AGENTMEMORY_DATA_DIR=${AGENTMEMORY_DATA_DIR}
+III_DATA_DIR=${III_DATA_DIR}
+AGENTMEMORY_REQUIRE_HTTPS=${AGENTMEMORY_REQUIRE_HTTPS:-1}
+AGENTMEMORY_SECRET=${AGENTMEMORY_SECRET:-}
+PUBLIC_AGENTMEMORY_URL=${PUBLIC_AGENTMEMORY_URL:-}
+AGENTMEMORY_AUTO_COMPRESS=${AGENTMEMORY_AUTO_COMPRESS:-false}
+AGENTMEMORY_INJECT_CONTEXT=${AGENTMEMORY_INJECT_CONTEXT:-false}
+EOF
+
+echo "[railway] Agentmemory env preview:"
+grep -v "SECRET" /app/.agentmemory/.env || true
 
 echo "[railway] Launching agentmemory..."
 
