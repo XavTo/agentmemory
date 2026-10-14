@@ -1,40 +1,31 @@
+ARG III_VERSION=0.22.1
+FROM iiidev/iii:${III_VERSION} AS iii-image
+
 FROM node:22-slim
 
-ENV NODE_ENV=production
-ENV HOME=/app
-ENV PATH="/app/.local/bin:${PATH}"
+ARG AGENTMEMORY_VERSION=0.9.30
+ARG III_VERSION=0.22.1
 
-WORKDIR /app
+ENV NODE_ENV=production \
+    HOME=/data \
+    AGENTMEMORY_III_VERSION=${III_VERSION} \
+    TINI_SUBREAPER=1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    tar \
-    bash \
-    sed \
-    grep \
-    socat \
-  && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends ca-certificates tini gosu \
+    && rm -rf /var/lib/apt/lists/*
 
-# Pin Agentmemory for reproducible Railway builds.
-RUN npm install -g @agentmemory/agentmemory@0.9.16
+COPY --from=iii-image /app/iii /usr/local/bin/iii
+RUN iii --version 2>&1 | grep -qF "${III_VERSION}"
 
-# Pin iii-engine to v0.11.2.
-# Agentmemory 0.9.x currently expects this engine generation.
-RUN mkdir -p /app/.local/bin \
-  && curl -fsSL "https://github.com/iii-hq/iii/releases/download/iii/v0.11.2/iii-x86_64-unknown-linux-gnu.tar.gz" \
-  | tar -xz -C /app/.local/bin \
-  && chmod +x /app/.local/bin/iii
+WORKDIR /opt/agentmemory
+RUN printf '{"name":"agentmemory-railway","private":true,"overrides":{"iii-sdk":"%s"}}\n' "${III_VERSION}" > package.json \
+    && npm install "@agentmemory/agentmemory@${AGENTMEMORY_VERSION}" --omit=optional --no-audit --no-fund \
+    && ln -s /opt/agentmemory/node_modules/.bin/agentmemory /usr/local/bin/agentmemory \
+    && cp node_modules/@agentmemory/agentmemory/dist/iii-config.docker.yaml node_modules/@agentmemory/agentmemory/dist/iii-config.yaml
 
-RUN mkdir -p /data /app
-
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+COPY --chmod=0755 start.sh /usr/local/bin/agentmemory-start
+COPY viewer-proxy.mjs /opt/agentmemory/viewer-proxy.mjs
 
 EXPOSE 8080
-EXPOSE 3112
-EXPOSE 8083
-EXPOSE 49134
-
-CMD ["/app/start.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/agentmemory-start"]

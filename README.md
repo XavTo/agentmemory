@@ -16,12 +16,19 @@ Deploy it here:
 
 https://railway.com/deploy/agentmemory-self-hosted-memory-for-ai-ag
 
+## Validated Versions
+
+- Agentmemory: `0.9.30`
+- iii engine and SDK: `0.22.1`
+- Node.js: `22`
+
 ## Default Setup
 
 - REST API exposed on Railway public networking
 - Persistent storage mounted at `/data`
 - API protected with `AGENTMEMORY_SECRET`
-- Optional viewer support behind a protected proxy
+- Viewer on internal port `8083`, behind the template's Caddy Basic Auth proxy
+- Noninteractive startup and persistent preferences under `/data/.agentmemory`
 - No LLM provider required by default
 
 ## Recommended Variables
@@ -30,11 +37,19 @@ https://railway.com/deploy/agentmemory-self-hosted-memory-for-ai-ag
 PORT="8080"
 NODE_ENV="production"
 III_DATA_DIR="/data"
-AGENTMEMORY_URL="https://${{RAILWAY_PUBLIC_DOMAIN}}"
+PUBLIC_AGENTMEMORY_URL="https://${{RAILWAY_PUBLIC_DOMAIN}}"
 AGENTMEMORY_SECRET="${{secret(32)}}"
 AGENTMEMORY_DATA_DIR="/data"
 AGENTMEMORY_REQUIRE_HTTPS="1"
+VIEWER_ALLOWED_HOSTS="${{agentmemory viewer caddy.RAILWAY_PUBLIC_DOMAIN}}"
+VIEWER_ALLOWED_ORIGINS="https://${{agentmemory viewer caddy.RAILWAY_PUBLIC_DOMAIN}}"
 ```
+
+The template generates a separate API secret and viewer password for every deployment. Copy `AGENTMEMORY_SECRET` into your MCP clients. Sign in to the viewer with `AUTH_USER` and `AUTH_PASS` from the Caddy service.
+
+For custom domains, add the viewer hostname and its exact HTTPS origin to the two viewer allow-list variables, then redeploy Agentmemory. Keep the viewer relay private.
+
+The startup script retains your supplied API secret, uses the official Docker engine configuration, and runs Agentmemory as the unprivileged `node` user. No compiled JavaScript patches or external LLM key are required.
 
 ## Test the API
 
@@ -44,14 +59,14 @@ curl -i \
   "$AGENTMEMORY_URL/agentmemory/health"
 ```
 
-A healthy deployment should return HTTP `200`.
+A healthy authenticated deployment should return HTTP `200`. Railway uses the public `/agentmemory/livez` endpoint for container liveness; this endpoint contains no memory data.
 
 ## Use with Codex
 
 Install the MCP shim:
 
 ```bash
-npm install -g @agentmemory/mcp
+npm install -g @agentmemory/mcp@0.9.30
 ```
 
 Add this to `~/.codex/config.toml`:
@@ -68,7 +83,6 @@ tool_timeout_sec = 120
 AGENTMEMORY_URL = "https://your-railway-domain.up.railway.app"
 AGENTMEMORY_SECRET = "your-secret"
 AGENTMEMORY_FORCE_PROXY = "1"
-AGENTMEMORY_DEBUG = "1"
 ```
 
 Then run `/mcp` inside Codex and check that `agentmemory` is listed.

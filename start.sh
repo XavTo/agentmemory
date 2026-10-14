@@ -1,122 +1,33 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-export HOME=/app
-export PATH="/app/.local/bin:${PATH}"
-
-# Railway public API port.
 export PORT="${PORT:-8080}"
-
-# Persistent Railway volume paths.
-export III_DATA_DIR="${III_DATA_DIR:-/data}"
 export AGENTMEMORY_DATA_DIR="${AGENTMEMORY_DATA_DIR:-/data}"
+export III_DATA_DIR="$AGENTMEMORY_DATA_DIR"
+export HOME="$AGENTMEMORY_DATA_DIR"
+export III_ENGINE_PORT="${III_ENGINE_PORT:-49134}"
+export III_STREAM_PORT="${III_STREAM_PORT:-3112}"
+export III_VIEWER_PORT="${VIEWER_INTERNAL_PORT:-8082}"
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
 
-mkdir -p /data
-mkdir -p /app
-mkdir -p /app/.agentmemory
-
-echo "[railway] Starting agentmemory"
-echo "[railway] PORT=${PORT}"
-echo "[railway] HOME=${HOME}"
-echo "[railway] III_DATA_DIR=${III_DATA_DIR}"
-echo "[railway] AGENTMEMORY_DATA_DIR=${AGENTMEMORY_DATA_DIR}"
-
-echo "[railway] Fixing /data permissions..."
-chown -R 65532:65532 /data || true
-chmod 755 /data || true
-
-echo "[railway] Testing /data write access..."
-echo "ok" > /data/.railway-write-test
-cat /data/.railway-write-test
-rm -f /data/.railway-write-test
-
-DIST_DIR="/usr/local/lib/node_modules/@agentmemory/agentmemory/dist"
-SOURCE_CONFIG="${DIST_DIR}/iii-config.docker.yaml"
-DEFAULT_CONFIG="${DIST_DIR}/iii-config.yaml"
-RAILWAY_CONFIG="/app/iii-config.railway.yaml"
-
-if [ ! -f "$SOURCE_CONFIG" ]; then
-  echo "[railway] ERROR: missing ${SOURCE_CONFIG}"
-  echo "[railway] dist content:"
-  ls -la "$DIST_DIR" || true
-  exit 1
+: "${AGENTMEMORY_SECRET:?Set AGENTMEMORY_SECRET in Railway Variables before starting.}"
+if [ -n "${RAILWAY_ENVIRONMENT_ID:-}" ] && [ "${RAILWAY_VOLUME_MOUNT_PATH:-}" != "$AGENTMEMORY_DATA_DIR" ]; then
+    echo "[railway] Attach a persistent volume at $AGENTMEMORY_DATA_DIR before deploying." >&2
+    exit 1
 fi
 
-# Start from Agentmemory's official Docker config.
-cp "$SOURCE_CONFIG" "$RAILWAY_CONFIG"
+mkdir -p "$HOME/.agentmemory"
+chown -R node:node "$AGENTMEMORY_DATA_DIR"
 
-# Only expose the REST API for Railway.
-# Do NOT patch viewer ports or compiled JS files.
-sed -i "s/host: 127.0.0.1/host: 0.0.0.0/g" "$RAILWAY_CONFIG"
-sed -i "s/host: localhost/host: 0.0.0.0/g" "$RAILWAY_CONFIG"
+if [ ! -f "$HOME/.agentmemory/preferences.json" ]; then
+    umask 077
+    node -e 'const fs=require("node:fs"); fs.writeFileSync(process.env.HOME+"/.agentmemory/preferences.json", JSON.stringify({schemaVersion:1,skipSplash:true,skipNpxHint:true,skipGlobalInstall:true,skipConsoleInstall:true,firstRunAt:new Date().toISOString()}));'
+    chown node:node "$HOME/.agentmemory/preferences.json"
+fi
 
-# Adapt the REST API port to Railway's public PORT.
-sed -i "0,/port: 3111/s//port: ${PORT}/" "$RAILWAY_CONFIG"
+# Caddy authenticates the private relay; HTTP and live streams share one port.
+export AGENTMEMORY_VIEWER_HOST=127.0.0.1
+gosu node:node env HOME="$AGENTMEMORY_DATA_DIR" node /opt/agentmemory/viewer-proxy.mjs &
 
-# Agentmemory internally loads this default config path.
-cp "$RAILWAY_CONFIG" "$DEFAULT_CONFIG"
-
-echo "[railway] Overwrote default config:"
-echo "[railway] ${DEFAULT_CONFIG}"
-
-echo "[railway] Effective config preview:"
-cat "$DEFAULT_CONFIG"
-
-echo "[railway] Expected:"
-echo "[railway] API listener should be 0.0.0.0:${PORT}"
-echo "[railway] Stream listener should be whatever Agentmemory config defines"
-echo "[railway] Viewer should use Agentmemory defaults"
-
-echo "[railway] Writing /app/.agentmemory/.env from Railway variables..."
-
-cat > /app/.agentmemory/.env <<EOF
-AGENTMEMORY_DATA_DIR=${AGENTMEMORY_DATA_DIR}
-III_DATA_DIR=${III_DATA_DIR}
-AGENTMEMORY_REQUIRE_HTTPS=${AGENTMEMORY_REQUIRE_HTTPS:-1}
-AGENTMEMORY_SECRET=${AGENTMEMORY_SECRET:-}
-PUBLIC_AGENTMEMORY_URL=${PUBLIC_AGENTMEMORY_URL:-}
-AGENTMEMORY_AUTO_COMPRESS=${AGENTMEMORY_AUTO_COMPRESS:-false}
-AGENTMEMORY_INJECT_CONTEXT=${AGENTMEMORY_INJECT_CONTEXT:-false}
-EOF
-
-echo "[railway] Writing /app/.agentmemory/preferences.json to skip interactive first-run..."
-
-cat > /app/.agentmemory/preferences.json <<EOF
-{
-  "schemaVersion": 1,
-  "lastAgent": null,
-  "lastAgents": [],
-  "lastProvider": null,
-  "skipSplash": true,
-  "skipNpxHint": true,
-  "skipGlobalInstall": true,
-  "skipConsoleInstall": true,
-  "firstRunAt": "2026-05-15T00:00:00.000Z"
-}
-EOF
-
-chmod 600 /app/.agentmemory/.env || true
-chmod 600 /app/.agentmemory/preferences.json || true
-
-echo "[railway] Agentmemory env preview:"
-grep -v "SECRET" /app/.agentmemory/.env || true
-
-echo "[railway] Agentmemory preferences preview:"
-cat /app/.agentmemory/preferences.json || true
-
-echo "[railway] Node homedir check:"
-node -e 'const os=require("os"); console.log(os.homedir())'
-
-echo "[railway] Launching agentmemory..."
-
-export VIEWER_PUBLIC_PORT="${VIEWER_PUBLIC_PORT:-8083}"
-export VIEWER_INTERNAL_PORT="${VIEWER_INTERNAL_PORT:-8082}"
-
-echo "[railway] Starting viewer proxy:"
-echo "[railway] 0.0.0.0:${VIEWER_PUBLIC_PORT} -> 127.0.0.1:${VIEWER_INTERNAL_PORT}"
-
-socat TCP-LISTEN:${VIEWER_PUBLIC_PORT},bind=0.0.0.0,fork,reuseaddr TCP:127.0.0.1:${VIEWER_INTERNAL_PORT} &
-
-exec agentmemory \
-  --port "${PORT}" \
-  --verbose
+echo "[railway] Starting Agentmemory on port $PORT with persistent storage at $AGENTMEMORY_DATA_DIR"
+exec gosu node:node env HOME="$AGENTMEMORY_DATA_DIR" agentmemory --port "$PORT" --data-dir "$AGENTMEMORY_DATA_DIR"
